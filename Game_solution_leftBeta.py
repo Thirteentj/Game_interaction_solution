@@ -312,7 +312,7 @@ def get_Nash_equilibrium_PET(index,veh_L,veh_S,df_all_veh,seg_trj_single,type=1)
             m_S, n_S = get_payoff_coefficient(Risk_S, veh_S.risk_level)
 
 
-            
+
             if type == 1:  #综合考虑安全和效益
                 payoff_L = m_L * dv_L * 0.001 + n_L * (1 - Risk_L)  #这里考虑将效率的效益缩小，以适应风险波动的小范围特征
                 payoff_S = m_S * dv_S * 0.001 + n_S * (1 - Risk_S)
