@@ -427,7 +427,7 @@ def map_topo_info_extract(map_features,single_scenario_all_feature,map_features_
             if single_lane_entry_exit_info['is_a_turn'] == 'straight':
                 single_lane_entry_exit_info['lane_slope'] = cal_lane_slpoe(
                     single_feature.lane.polyline)  # 如果是直线车道，计算这条车道的斜率，用于后续计算交叉口角度
-            # single_lane_entry_exit_info['is a turn'] = turn_type
+            # single_lane_entry_exit_info['is a_plan turn'] = turn_type
             # 相连接车道信息提取
             single_lane_entry_exit_info['ego_lane_point_entry'] = ego_lane_point_entry
             single_lane_entry_exit_info['ego_lane_point_exit'] = ego_lane_point_exit
@@ -579,7 +579,7 @@ def rayCasting(p, poly):  # 判断一个点是否在多边形内部
     i = 0
     l = len(poly)
     j = l - 1
-    # for(i = 0, dis = poly.length, j = dis - 1; i < dis; j = i, i++):
+    # for(i = 0, l = poly.length, j = l - 1; i < l; j = i, i++):
     while i < l:
         sx = poly[i][0]
         sy = poly[i][1]
@@ -745,7 +745,7 @@ def get_lane_direction_new(lane_turn_right_id,single_map_dict,df_all_lane_topo_i
                 continue
     else:  # 表明有三个方向，暂时按照四个方向处理
         for lane_entry in lane_right_entry:
-            #print('a{},{}'.format(lane_entry,entry_exit_link))
+            #print('a_plan{},{}'.format(lane_entry,entry_exit_link))
             try:
                 lane_exit = entry_exit_link[lane_entry]
                 x1, y1 = single_map_dict[lane_entry][-1].x, single_map_dict[lane_entry][-1].y
@@ -856,7 +856,7 @@ def intersection_info_extract(df_all_lane_topo_info, single_map_dict, lane_turn_
                 df_all_lane_topo_info.loc[df_all_lane_topo_info['lane_id'] == lane_in_id, 'entry_or_exit'] = 'inside'  # 车道位于交叉口内部,为直行车道
                 entry_lane_id = df_all_lane_topo_info[df_all_lane_topo_info['lane_id'] == lane_in_id]['entry_lanes'].iloc[0]
                 exit_lane_id = df_all_lane_topo_info[df_all_lane_topo_info['lane_id'] == lane_in_id]['exit_lanes'].iloc[0]
-                # print('a',entry_lane_id,exit_lane_id)
+                # print('a_plan',entry_lane_id,exit_lane_id)
                 # 记录进出口道功能
                 df_all_lane_topo_info.loc[df_all_lane_topo_info['lane_id'] == entry_lane_id, 'entry_or_exit'] = 'entry'
                 df_all_lane_topo_info.loc[df_all_lane_topo_info['lane_id'] == exit_lane_id, 'entry_or_exit'] = 'exit'
@@ -926,11 +926,21 @@ def intersection_info_extract(df_all_lane_topo_info, single_map_dict, lane_turn_
 
 
 
-def scenario_to_txt(scenario,scenario_label):  #将一个scenario的所有数据输出为txt，一般用于检查信息
-    output = "D:/Data/WaymoData/" + "scenario_" + str(scenario_label) + ".txt"  #输出路径需要更改
-    data = open(output, 'w+')
-    print(scenario, file=data)
-    data.close()
+def scenario_to_txt(target_seg_id,target_label):  #将一个scenario的所有数据输出为txt，一般用于检查信息
+    file_index = segment_id_to_file_index(target_seg_id)
+    filepath = 'E:/waymo_motion_dataset/training_20s.tfrecord-' + file_index + '-of-01000'
+    segment_dataset = tf.data.TFRecordDataset(filepath)
+    segment_dataset = segment_dataset.apply(tf.data.experimental.ignore_errors())
+    scenario_label = 0
+    for one_record in segment_dataset:  # one_scenario 就是一个scenario
+        scenario_label += 1
+        if scenario_label == target_label:
+            scenario = Scenario()
+            scenario.ParseFromString(one_record.numpy())  # 数据格式转化
+            output = "D:/Myproject/waymo-od/waymo-od/data_save/" + str(target_seg_id) + '_segment_id_' + str(target_label) + "scenario_" + ".txt"  #输出路径需要更改
+            data = open(output, 'w+')
+            print(scenario, file=data)
+            data.close()
 
 
 def file_index_to_segment_id(file_index):
@@ -945,7 +955,32 @@ def file_index_to_segment_id(file_index):
         segment_id = eval(file_index[index:])
 
     return segment_id
-
+def segment_id_to_file_index(seg_id):
+    file_index = -1
+    if 0<=seg_id <= 9:
+        file_index = '0000' + str(seg_id)
+    elif 10<=seg_id <= 99:
+        file_index = '000' + str(seg_id)
+    elif 100<=seg_id <= 999:
+        file_index = '00' + str(seg_id)
+    elif seg_id ==1000:
+        file_index = '0' + str(seg_id)
+    return file_index
+def judge_traffic_light(df):
+    df = df.copy()
+    df.insert(0, 'traffic_light', 0)  # 要指定插入列的位置，则使用insert函数
+    for i in range(len(df)):
+        seg_id = df['segment_id'].iloc[i]
+        scenario_id = df['scenario_id'].iloc[i]
+        file_index = segment_id_to_file_index(seg_id)
+        path = 'E:/Result_save/data_save/dynamic_map_info/'  + file_index + '_dynamic_map_single_file_all_scenario.csv'
+        df_light = pd.read_csv(path)
+        scenario_id_light = pd.unique(df_light['scenario_index'])
+        if scenario_id in scenario_id_light:
+            df['traffic_light'].iloc[i] = 1
+        else:
+            df['traffic_light'].iloc[i] = 0
+    return df
 def map_lane_point_extract_single_scenaraio(map_features,file_index,scenario_label):
     map_point_list = []
     for single_feature in map_features:
@@ -1113,7 +1148,7 @@ def get_intersection_info(segment_dataset,df_turn_left_scenario,file_index,seg_t
 
                 intersection_center_loc_real,intersection_range = get_real_intersection_center_point(intersection_center_loc_sim,df_single_scenario_lane_topo_info,
                                                                                   single_map_dict,lane_turn_left_id, lane_turn_right_id )  #基于提取得到的车道与交叉口信息，得到真正的交叉口中心点，同时确定交叉口提取范围
-                #intersection_range 为一个元组，(dis,w)包含交叉口范围的长度和宽度，之后所有基于length的代码均需要相应修改
+                #intersection_range 为一个元组，(l,w)包含交叉口范围的长度和宽度，之后所有基于length的代码均需要相应修改
                 # 合流点、分流点信息确定，确定交叉口范围
                 single_intersection_info, df_single_scenario_lane_topo_info, lane_turn_right_id_real = intersection_info_extract(
                     df_single_scenario_lane_topo_info, single_map_dict, lane_turn_left_id, lane_turn_right_id,
@@ -1172,7 +1207,7 @@ def get_intersection_info_2(segment_dataset,df_turn_left_scenario,file_index,seg
 
                 intersection_center_loc_real,intersection_range = get_real_intersection_center_point(intersection_center_loc_sim,df_single_scenario_lane_topo_info,
                                                                                   single_map_dict,lane_turn_left_id, lane_turn_right_id )  #基于提取得到的车道与交叉口信息，得到真正的交叉口中心点，同时确定交叉口提取范围
-                #intersection_range 为一个元组，(dis,w)包含交叉口范围的长度和宽度，之后所有基于length的代码均需要相应修改
+                #intersection_range 为一个元组，(l,w)包含交叉口范围的长度和宽度，之后所有基于length的代码均需要相应修改
                 # 合流点、分流点信息确定，确定交叉口范围
                 # single_intersection_info, df_single_scenario_lane_topo_info, lane_turn_right_id_real = intersection_info_extract(
                 #     df_single_scenario_lane_topo_info, single_map_dict, lane_turn_left_id, lane_turn_right_id,
@@ -1396,7 +1431,7 @@ def get_lane_num_diff_direction(veh_id, df,map_features,df_intersection_info_sin
                     x_veh,y_veh = veh_point_list[j][0],veh_point_list[j][1]
                     dis = np.sqrt((x_veh-x_point_last)**2+(y_veh-y_point_last)**2)
                     # if veh_id == 1859 and (lane_id == 53 or lane_id == 68):
-                    #     print('lane_id is {},dis is {}'.format(lane_id,dis))
+                    #     print('lane_id is {},dis_plan is {}'.format(lane_id,dis_plan))
                     if dis< temp_min_dis_in:
                         temp_min_dis_in = dis
                 if temp_min_dis_in < min_dis_in:

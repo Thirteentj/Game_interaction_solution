@@ -279,7 +279,7 @@ def get_Nash_equilibrium(index,veh_L,veh_S,df_all_veh,seg_trj_single,type=1):  #
 def get_Nash_equilibrium_PET(index,veh_L,veh_S,df_all_veh,seg_trj_single,type=1):  #求解当前时间步的纳什均衡最优解,使用PET作为安全收益
     time_now = veh_L.time_stamp_list_real[index]
     df_all_veh_now = df_all_veh[df_all_veh['time_stamp']==time_now]
-    dis_L_now, v_L_now, a_L_now = veh_L.dis_plan[-1], veh_L.v_real[index], veh_L.a_real[index]
+    dis_L_now, v_L_now, a_L_now = veh_L.dis_plan[-1], veh_L.v_real[index], veh_L.a_real[index]  #左车当下时刻距离冲突点的距离，当下时刻的速度，当下时刻加速度
     dis_S_now, v_S_now, a_S_now = veh_S.dis_plan[-1], veh_S.v_real[index], veh_S.a_real[index]
     S_L_all = S_S_all = veh_L.s_all
     L_best = S_best = []
@@ -297,28 +297,23 @@ def get_Nash_equilibrium_PET(index,veh_L,veh_S,df_all_veh,seg_trj_single,type=1)
             dis_L_next, v_L_next, a_L_next, dv_L = get_motion_state(dis_L_now, v_L_now, s_L_temp,veh_L.time_stamp,veh_L.s_set)
             dis_S_next, v_S_next, a_S_next, dv_S = get_motion_state(dis_S_now, v_S_now, s_S_temp,veh_S.time_stamp,veh_S.s_set)
 
-            Risk_L, Risk_S, map_para = PF.get_risk_interactive_all(index,time_now, veh_L, veh_S, v_L_next, a_L_next,
-                                                                                 v_S_next, a_S_next,seg_trj_single)  #得到感知风险
-            # print(Risk_L)
-            # Risk_L = get_risk_point(Risk_L_matrix, veh_L.conflict_point_real, map_para)
-            # Risk_S = get_risk_point(Risk_S_matrix, veh_S.conflict_point_real, map_para)
-            # print(f'左车的风险值为{Risk_L},直行车的风险值为{Risk_S}')
             #计算实际的状态
-            dis_L_next, v_L_next, a_L_next, dv_L = get_motion_state_V2(dis_L_now, v_L_now,a_L_now, s_L_temp, veh_L.time_stamp,veh_L.s_set,Risk_L)
-            dis_S_next, v_S_next, a_S_next, dv_S = get_motion_state_V2(dis_S_now, v_S_now,a_L_now, s_S_temp, veh_S.time_stamp,veh_S.s_set,Risk_S)
+            # dis_L_next, v_L_next, a_L_next, dv_L = get_motion_state_V2(dis_L_now, v_L_now,a_L_now, s_L_temp, veh_L.time_stamp,veh_L.s_set,Risk_L)
+            # dis_S_next, v_S_next, a_S_next, dv_S = get_motion_state_V2(dis_S_now, v_S_now,a_L_now, s_S_temp, veh_S.time_stamp,veh_S.s_set,Risk_S)
+
+            #以当下状态，预测每个时间步二车的PET
+            time_residul_L = dis_L_next / (v_L_next + 1e-5) #加一个小量，避免v=0（停车）的情况出现
+            time_residul_S = dis_S_next / (v_S_next + 1e-5)
+            PET = abs(time_residul_L-time_residul_S)
 
 
-            m_L,n_L = get_payoff_coefficient(Risk_L,veh_L.risk_level)
-            m_S, n_S = get_payoff_coefficient(Risk_S, veh_S.risk_level)
-
-
-
+            m_L=m_S=n_L=n_S = 0.5
             if type == 1:  #综合考虑安全和效益
-                payoff_L = m_L * dv_L * 0.001 + n_L * (1 - Risk_L)  #这里考虑将效率的效益缩小，以适应风险波动的小范围特征
-                payoff_S = m_S * dv_S * 0.001 + n_S * (1 - Risk_S)
+                payoff_L = m_L * dv_L  + n_L * PET  #这里考虑将效率的效益缩小，以适应风险波动的小范围特征
+                payoff_S = m_S * dv_S  + n_S * PET
             elif type == 2:#方案二：只考虑安全
-                payoff_L = (1 - Risk_L)
-                payoff_S = (1 - Risk_S)
+                payoff_L = PET
+                payoff_S = PET
             elif type == 3:  #方案三：只考虑效率
                 payoff_L = dv_L
                 payoff_S = dv_S
@@ -345,12 +340,11 @@ def get_Nash_equilibrium_PET(index,veh_L,veh_S,df_all_veh,seg_trj_single,type=1)
     relative_dis_L = cal_relative_dis(index, veh_L.conflict_point_real_index, veh_L.tra_real_s_sum[0])
     relative_dis_S = cal_relative_dis(index, veh_S.conflict_point_real_index, veh_S.tra_real_s_sum[0])
     # print(f's_L_all:{S_L_all},这个时间步的最优策略为{L_best}')
-    veh_L.index.append(index);
-    veh_L.time_stamp_list_game.append(time_now);
+    veh_L.index.append(index)
+    veh_L.time_stamp_list_game.append(time_now)
     veh_L.s.append(L_best[0])
     veh_L.dis_plan.append(relative_dis_L);veh_L.v.append(L_best[2]);veh_L.a_plan.append(L_best[3])
     veh_L.payoff.append(payoff_left_best)
-
 
     veh_S.index.append(index);veh_S.time_stamp_list_game.append(time_now);veh_S.s.append(S_best[0])
     veh_S.dis_plan.append(relative_dis_S);veh_S.v.append(S_best[2]);veh_S.a_plan.append(S_best[3])
@@ -832,9 +826,12 @@ def main_waymo(a,b,index,cal_type,u_type,risk_level_list):
                 print(f'共{len(df_L)}个时间步')
                 for k in range(len(df_L)):
                     # print('第%d个时间步'%i)
-                    veh_L, veh_S, df_payoff_L, df_payoff_S, df_payoff_sum = get_Nash_equilibrium(k, veh_L, veh_S,
-                                                                                                 df_all_veh,
-                                                                                                 seg_trj_single,cal_type)
+                    if u_type=='risk':
+                        veh_L, veh_S, df_payoff_L, df_payoff_S, df_payoff_sum = get_Nash_equilibrium(i, veh_L, veh_S,
+                                                                                                     df_all_veh, seg_trj_single,type=cal_type)
+                    else:
+                        veh_L, veh_S, df_payoff_L, df_payoff_S, df_payoff_sum = get_Nash_equilibrium_PET(i, veh_L, veh_S,
+                                                                                                     df_all_veh,seg_trj_single,type=cal_type)
 
                     payoff_L.append(df_payoff_L)
                     payoff_S.append(df_payoff_S)
@@ -870,7 +867,7 @@ def main_waymo(a,b,index,cal_type,u_type,risk_level_list):
 
 
     scoring_df = pd.DataFrame(scoring_list)
-    scoring_output = f'result/waymo_scoring_result_{index}_cal_type{cal_type}_range_{a}_{b}.csv'
+    scoring_output = f'result/waymo_scoring_result_{index}_cal_type{cal_type}_range_{a}_{b}_u_type_{u_type}.csv'
     scoring_df.to_csv(scoring_output)
     end = datetime.datetime.now()
     print(f'程序计算用时{end - start}')
@@ -964,8 +961,8 @@ def main_xianxia(cal_type,u_type,risk_level_list):  #对仙霞剑河交叉口进
                     if i % 20 == 0:
                         print('第%d个时间步，收益矩阵为' % i)
                         print(df_payoff_sum)
-                # print(veh_L.s)
-                # print(veh_S.s)
+                print(veh_L.s)
+                print(veh_S.s)
                 scoring_L, scoring_S = interactive_scoring(veh_L, veh_S)
                 print(f'最终得分，左车{scoring_L},直行车{scoring_S}')
                 scoring_dict = {}
@@ -979,19 +976,20 @@ def main_xianxia(cal_type,u_type,risk_level_list):  #对仙霞剑河交叉口进
                 scoring_list.append(scoring_dict)
 
     scoring_df = pd.DataFrame(scoring_list)
-    scoring_output = f'result/xianxia_scoring_result_cal_type_{cal_type}_all.xlsx'
+    scoring_output = f'result/xianxia_scoring_result_cal_type_{cal_type}_all_u_type_{u_type}.xlsx'
     scoring_df.to_excel(scoring_output,index=None)
     end = datetime.datetime.now()
     print(f'程序计算用时{end - start}')
 
 
 if __name__ == '__main__':
-    risk_level_list = [(0.3, 0.5), (0.4, 0.6), (0.6, 0.8)]  # 分析不同风险感知水平下的驾驶人的策略变化 分别依次对应三种类型：保守、稳定、激进
-    cal_type = 3  #1：综合考虑风险和效率；2：考虑风险；3：考虑效率
+    # risk_level_list = [(0.3, 0.5), (0.4, 0.6), (0.6, 0.8)]  # 分析不同风险感知水平下的驾驶人的策略变化 分别依次对应三种类型：保守、稳定、激进
+    risk_level_list = [(0.3, 0.5)]
+    cal_type = 1  #1：综合考虑风险和效率；2：考虑风险；3：考虑效率
     u_type = 'risk'  #安全风险的计算方式  risk：使用风险场计算，PET：使用PET作为安全收益进行计算
 
-    main_xianxia(cal_type,u_type,risk_level_list)
-    #共194个文件
-    # a,b,index = 100,194,1
-    # main_waymo(a,b,index,cal_type,u_type,risk_level_list)
-    # # try_main_waymo(a,b,index)
+    # main_xianxia(cal_type,u_type,risk_level_list)
+    # #共194个文件
+    a,b,index = 0,194,1
+    main_waymo(a,b,index,cal_type,u_type,risk_level_list)
+
